@@ -12,6 +12,19 @@ Bruno-class engine. Enterprise-class polish. Fully local. Zero telemetry.
 </div>
 
 ---
+
+> **This is the `dev-enh` branch of the Amit-A2Z fork.** It bundles five
+> enhancements (all submitted upstream as PRs
+> [#44](https://github.com/vegha-ai/Vegha/pull/44),
+> [#45](https://github.com/vegha-ai/Vegha/pull/45),
+> [#46](https://github.com/vegha-ai/Vegha/pull/46),
+> [#47](https://github.com/vegha-ai/Vegha/pull/47),
+> [#48](https://github.com/vegha-ai/Vegha/pull/48)) into one buildable tree
+> for CLI and GUI. See [Fork enhancements](#fork-enhancements-dev-enh-branch)
+> for what changed and how to test it. The fork's `dev` branch tracks
+> vanilla upstream.
+
+---
 ## Why Vegha
 
 The desktop API-testing category is crowded with Electron apps that boot slowly, eat memory, and quietly phone home. Vegha is a fresh alternative:
@@ -201,6 +214,63 @@ dotnet run --project cli -- run ./petstore
 ### Packaged builds
 
 Signed installers and store packages (Velopack, MSIX, MAS) are produced by the scripts in [`eng/`](eng) together with the GitHub Actions workflows in [`.github/workflows/`](.github/workflows).
+
+## Fork enhancements (dev-enh branch)
+
+This branch merges five fix/feature branches, each also raised as an
+upstream PR. All are available to both the CLI runner and the GUI built
+from this branch.
+
+| Upstream PR | Branch | What it adds |
+|---|---|---|
+| [#44](https://github.com/vegha-ai/Vegha/pull/44) | `fix/cli-soap-security` | WS-Security (UsernameToken Text/Digest, Timestamp, WS-Addressing) applied by the CLI runner, not just the request editor. `{{var}}` interpolation in WSSE credentials. |
+| [#45](https://github.com/vegha-ai/Vegha/pull/45) | `fix/cli-postman-translate` | `vegha import` translates Postman `pm.*` scripts to the native test API (like the GUI wizard) and warns on stderr about anything it cannot translate. |
+| [#46](https://github.com/vegha-ai/Vegha/pull/46) | `fix/parser-blank-lines` | Parser: an unindented `});` inside `tests {}` no longer truncates the block. Unparseable `.bru` files are reported with file, line and column - as a CLI warning and a GUI status toast - instead of being silently dropped. |
+| [#47](https://github.com/vegha-ai/Vegha/pull/47) | `feat/p12-client-certs` | mTLS client certificates (P12/PFX and PEM) persisted per request in `settings { mtlsCertPath / mtlsCertPassword }`, loaded by the runner and the GUI, password supports `{{var}}`. Fails loudly on a bad cert or password. |
+| [#48](https://github.com/vegha-ai/Vegha/pull/48) | `feat/pipeline-oauth2-cc` | OAuth2 `client_credentials` and `password` grants in the CLI runner, with a process-wide token cache (N requests = 1 token fetch), `add_token_to` / `header_prefix` parity with the GUI. `authorization_code` returns a clear editor-only error. |
+
+### Running the tests for these enhancements
+
+```bash
+# Pipeline integration tests: WSSE, mTLS, OAuth2, plus the existing suite (49 tests)
+dotnet test tests/Vegha.Tests.Integration -c Release \
+  --filter "FullyQualifiedName~RequestPipelineTests|FullyQualifiedName~OAuth2TokenAcquirer|FullyQualifiedName~CertificateLoader"
+
+# Parser terminator fix + load-issue reporting (37 tests)
+dotnet test tests/Vegha.Tests.Unit.Core.Bru.Parser -c Release
+
+# Postman script translation + CollectionLoader issue callback (258 tests)
+dotnet test tests/Vegha.Tests.Unit.Core.Importers -c Release
+
+# GUI view-model coverage incl. load-issue toasts (184 tests)
+dotnet test tests/Vegha.Tests.Unit.Core.ViewModels -c Release
+```
+
+Avoid a bare `dotnet test` at the repo root: the UI test project needs a
+display and some suites hit the network.
+
+### Trying the features from the CLI
+
+```bash
+# WS-Security: add a soap {} block to the request .bru, then
+dotnet run --project cli -c Release -- run <collection> --name "<request>"
+
+# mTLS: per request
+#   settings { mtlsCertPath: ./client.p12  mtlsCertPassword: {{certPw}} }
+
+# OAuth2 client credentials: per request
+#   auth: oauth2  +  auth:oauth2 { grant_type: client_credentials, ... }
+
+# JUnit report for CI
+dotnet run --project cli -c Release -- run <collection> --reporter junit --out report.xml
+```
+
+### Branch layout of this fork
+
+- `dev` - clean mirror of upstream `main` (default branch; do not commit here)
+- `dev-enh` - this branch: upstream + the five enhancements merged
+- `fix/*`, `feat/*` - one branch per upstream PR, each based on upstream `main`
+
 
 ---
 
