@@ -2037,26 +2037,26 @@ public partial class RequestEditorViewModel : ObservableObject
                     : new System.Net.NetworkCredential(NtlmUsername, NtlmPassword, NtlmDomain);
             }
 
-            // mTLS client certificate — load from PFX or PEM. Best-effort; failures
-            // surface in the status message rather than aborting the request.
+            // mTLS client certificate — load from PFX/P12 or PEM via the shared loader.
+            // Path and password support {{var}} interpolation, matching the runner pipeline.
+            // Best-effort; failures are logged rather than aborting the request.
             System.Security.Cryptography.X509Certificates.X509Certificate2? clientCert = null;
-            if (!string.IsNullOrWhiteSpace(MtlsCertPath) && File.Exists(MtlsCertPath))
+            var certPath = string.IsNullOrWhiteSpace(MtlsCertPath)
+                ? string.Empty
+                : Interpolator.Resolve(MtlsCertPath, vars);
+            if (!string.IsNullOrWhiteSpace(certPath) && File.Exists(certPath))
             {
                 try
                 {
-                    clientCert = System.IO.Path.GetExtension(MtlsCertPath).ToLowerInvariant() switch
-                    {
-                        // X509CertificateLoader replaced the X509Certificate2(path, password)
-                        // constructor in .NET 9 — the old one is obsolete (SYSLIB0057).
-                        ".pfx" or ".p12" => System.Security.Cryptography.X509Certificates.X509CertificateLoader
-                            .LoadPkcs12FromFile(MtlsCertPath, MtlsCertPassword),
-                        _ => System.Security.Cryptography.X509Certificates.X509Certificate2
-                            .CreateFromPemFile(MtlsCertPath),
-                    };
+                    var certPassword = string.IsNullOrEmpty(MtlsCertPassword)
+                        ? null
+                        : Interpolator.Resolve(MtlsCertPassword, vars);
+                    clientCert = Vegha.Core.Requests.CertificateLoader
+                        .LoadClientCertificate(certPath, certPassword);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to load mTLS client cert from {Path}", MtlsCertPath);
+                    _logger.LogWarning(ex, "Failed to load mTLS client cert from {Path}", certPath);
                 }
             }
 
@@ -3205,6 +3205,11 @@ public partial class RequestEditorViewModel : ObservableObject
             SettingSendCookies     = item.Settings.SendCookies;
             SettingSaveCookies     = item.Settings.SaveCookies;
             SettingHttp2           = item.Settings.EnableHttp2;
+            MtlsCertPath           = item.Settings.MtlsCertPath ?? string.Empty;
+            // Only a {{var}} reference is persisted; keep a literal password typed this
+            // session rather than wiping it when the file (correctly) has none.
+            if (item.Settings.MtlsCertPassword is not null)
+                MtlsCertPassword   = item.Settings.MtlsCertPassword;
 
             var soap = item.Soap;
             SoapTimestampEnabled     = soap?.Timestamp is not null;
@@ -3294,6 +3299,8 @@ public partial class RequestEditorViewModel : ObservableObject
                 SendCookies     = SettingSendCookies,
                 SaveCookies     = SettingSaveCookies,
                 EnableHttp2     = SettingHttp2,
+                MtlsCertPath     = string.IsNullOrWhiteSpace(MtlsCertPath) ? null : MtlsCertPath,
+                MtlsCertPassword = string.IsNullOrWhiteSpace(MtlsCertPassword) ? null : MtlsCertPassword,
             },
             Soap = BuildSoapConfig(),
         };

@@ -89,6 +89,12 @@ public static class BruEmitter
             sb.Append("  saveCookies: ").AppendLine(settings.SaveCookies.ToString().ToLowerInvariant());
         if (settings.EnableHttp2 != defaults.EnableHttp2)
             sb.Append("  http2: ").AppendLine(settings.EnableHttp2.ToString().ToLowerInvariant());
+        if (!string.IsNullOrEmpty(settings.MtlsCertPath))
+            sb.Append("  mtlsCertPath: ").AppendLine(settings.MtlsCertPath);
+        // Never write a literal cert password to disk — .bru files are typically committed.
+        // Only a {{var}} reference is persisted; the secret itself lives in an environment.
+        if (RequestSettingsConfig.IsVariableReference(settings.MtlsCertPassword))
+            sb.Append("  mtlsCertPassword: ").AppendLine(settings.MtlsCertPassword!.Trim());
         sb.AppendLine("}");
         sb.AppendLine();
     }

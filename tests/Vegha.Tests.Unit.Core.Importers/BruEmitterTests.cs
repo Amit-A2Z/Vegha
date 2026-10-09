@@ -261,6 +261,59 @@ public class BruEmitterTests
     }
 
     [Fact]
+    public void RoundTrip_Settings_MtlsClientCertPersists()
+    {
+        var original = new RequestItem
+        {
+            Name = "x", Method = "GET", Url = "https://x.test/y",
+            Settings = new RequestSettingsConfig
+            {
+                MtlsCertPath = "/certs/client.p12",
+                MtlsCertPassword = "{{certPassword}}",
+            }
+        };
+
+        var bru = BruEmitter.Emit(original);
+        bru.Should().Contain("mtlsCertPath: /certs/client.p12");
+        bru.Should().Contain("mtlsCertPassword: {{certPassword}}");
+
+        var rt = RoundTrip(original);
+        rt.Settings.MtlsCertPath.Should().Be("/certs/client.p12");
+        rt.Settings.MtlsCertPassword.Should().Be("{{certPassword}}");
+        rt.Settings.VerifySsl.Should().BeTrue("other settings keep their defaults");
+    }
+
+    [Fact]
+    public void Emit_Settings_LiteralMtlsPasswordIsNeverWritten()
+    {
+        var item = new RequestItem
+        {
+            Name = "x", Method = "GET", Url = "https://x.test/y",
+            Settings = new RequestSettingsConfig
+            {
+                MtlsCertPath = "/certs/client.p12",
+                MtlsCertPassword = "hunter2",
+            }
+        };
+
+        var bru = BruEmitter.Emit(item);
+        bru.Should().Contain("mtlsCertPath: /certs/client.p12");
+        bru.Should().NotContain("mtlsCertPassword");
+        bru.Should().NotContain("hunter2");
+    }
+
+    [Theory]
+    [InlineData("{{certPassword}}", true)]
+    [InlineData("  {{process.env.P12_PW}} ", true)]
+    [InlineData("hunter2", false)]
+    [InlineData("pre{{x}}", false)]
+    [InlineData("{{a}}{{b}}", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void IsVariableReference_OnlyAcceptsSingleWholeReference(string? value, bool expected) =>
+        RequestSettingsConfig.IsVariableReference(value).Should().Be(expected);
+
+    [Fact]
     public void Emit_AllDefaultSettings_OmitsSettingsBlock()
     {
         var bru = BruEmitter.Emit(new RequestItem
